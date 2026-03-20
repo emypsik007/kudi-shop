@@ -13,29 +13,55 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f5f7;
-            color: #1c1c1e;
+            background: linear-gradient(135deg, #0a0a2a 0%, #0a0a1a 50%, #0a0a2a 100%);
+            color: #ffffff;
             padding-bottom: 80px;
+            min-height: 100vh;
         }
 
-        /* Telegram WebApp контейнер */
+        /* Звездный фон */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background-image: 
+                radial-gradient(2px 2px at 20px 30px, #fff, rgba(0,0,0,0)),
+                radial-gradient(1px 1px at 60px 80px, #fff, rgba(0,0,0,0)),
+                radial-gradient(3px 3px at 150px 200px, #ffdd99, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 300px 400px, #fff, rgba(0,0,0,0)),
+                radial-gradient(1px 1px at 500px 100px, #fff, rgba(0,0,0,0)),
+                radial-gradient(2px 2px at 700px 600px, #ffaa88, rgba(0,0,0,0)),
+                radial-gradient(1px 1px at 800px 300px, #fff, rgba(0,0,0,0)),
+                radial-gradient(3px 3px at 1000px 500px, #ffccaa, rgba(0,0,0,0));
+            background-size: 200px 200px;
+            background-repeat: no-repeat;
+            opacity: 0.6;
+            z-index: 0;
+        }
+
         .app-container {
             max-width: 480px;
             margin: 0 auto;
-            background: #f5f5f7;
+            background: rgba(10, 10, 30, 0.7);
+            backdrop-filter: blur(2px);
             min-height: 100vh;
+            position: relative;
+            z-index: 1;
         }
 
         /* Шапка */
         .header {
-            background: #ffffff;
+            background: rgba(20, 20, 50, 0.9);
+            backdrop-filter: blur(10px);
             padding: 16px 20px;
             position: sticky;
             top: 0;
             z-index: 100;
-            backdrop-filter: blur(10px);
-            background: rgba(255, 255, 255, 0.95);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid rgba(100, 100, 200, 0.3);
         }
 
         .header-content {
@@ -47,7 +73,7 @@
         .logo h1 {
             font-size: 24px;
             font-weight: 700;
-            background: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%);
+            background: linear-gradient(135deg, #aaccff 0%, #ff99cc 100%);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
@@ -56,23 +82,71 @@
 
         .logo p {
             font-size: 12px;
-            color: #8e8e93;
+            color: #88aaff;
             margin-top: 2px;
-        }
-
-        .icons {
-            display: flex;
-            gap: 20px;
         }
 
         .icons span {
             font-size: 22px;
             cursor: pointer;
+            filter: drop-shadow(0 0 5px rgba(100, 100, 255, 0.5));
+        }
+
+        /* Поиск */
+        .search-section {
+            padding: 16px;
+            border-bottom: 1px solid rgba(100, 100, 200, 0.2);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            background: rgba(30, 30, 60, 0.8);
+            border-radius: 30px;
+            padding: 8px 16px;
+            border: 1px solid rgba(100, 100, 200, 0.4);
+            backdrop-filter: blur(5px);
+        }
+
+        .search-icon {
+            font-size: 20px;
+            color: #88aaff;
+        }
+
+        .search-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            font-size: 16px;
+            color: #ffffff;
+            padding: 8px 0;
+        }
+
+        .search-input::placeholder {
+            color: #88aaff;
+            opacity: 0.6;
+        }
+
+        .clear-search {
+            background: rgba(100, 100, 200, 0.3);
+            border: none;
+            border-radius: 20px;
+            padding: 4px 10px;
+            color: #ffffff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .clear-search:hover {
+            background: rgba(100, 100, 200, 0.6);
         }
 
         /* Категории */
         .categories {
-            padding: 20px 16px;
+            padding: 16px;
             overflow-x: auto;
             white-space: nowrap;
             scrollbar-width: none;
@@ -88,21 +162,22 @@
         }
 
         .category-btn {
-            background: #ffffff;
-            border: none;
+            background: rgba(30, 30, 60, 0.8);
+            border: 1px solid rgba(100, 100, 200, 0.3);
             padding: 10px 20px;
             border-radius: 30px;
             font-size: 14px;
             font-weight: 500;
-            color: #1c1c1e;
+            color: #ffffff;
             cursor: pointer;
             transition: all 0.2s ease;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            backdrop-filter: blur(5px);
         }
 
         .category-btn.active {
-            background: #1c1c1e;
-            color: #ffffff;
+            background: linear-gradient(135deg, #5f9eff, #8a6eff);
+            border-color: transparent;
+            box-shadow: 0 0 15px rgba(95, 158, 255, 0.3);
         }
 
         /* Секция товаров */
@@ -115,6 +190,10 @@
             font-weight: 700;
             margin-bottom: 16px;
             padding: 0 4px;
+            background: linear-gradient(135deg, #ffffff, #aaccff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
         }
 
         .products-grid {
@@ -124,23 +203,25 @@
         }
 
         .product-card {
-            background: #ffffff;
+            background: rgba(25, 25, 55, 0.8);
+            backdrop-filter: blur(10px);
             border-radius: 20px;
             overflow: hidden;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
             cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(100, 100, 200, 0.2);
         }
 
         .product-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3), 0 0 20px rgba(100, 100, 255, 0.2);
+            border-color: rgba(100, 100, 255, 0.5);
         }
 
         .product-image {
             width: 100%;
             aspect-ratio: 1 / 1;
-            background: #e9e9ef;
+            background: rgba(20, 20, 45, 0.6);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -155,19 +236,19 @@
             font-size: 15px;
             font-weight: 600;
             margin-bottom: 4px;
-            color: #1c1c1e;
+            color: #ffffff;
         }
 
         .product-price {
             font-size: 16px;
             font-weight: 700;
-            color: #007aff;
+            color: #ffaa66;
             margin: 6px 0;
         }
 
         .product-category {
             font-size: 11px;
-            color: #8e8e93;
+            color: #88aaff;
             text-transform: uppercase;
         }
 
@@ -175,18 +256,19 @@
             width: 100%;
             padding: 8px;
             margin-top: 8px;
-            background: #007aff;
+            background: linear-gradient(135deg, #5f9eff, #8a6eff);
             border: none;
             border-radius: 12px;
             color: white;
             font-weight: 600;
             font-size: 13px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
 
         .buy-btn:hover {
-            background: #0051d5;
+            transform: scale(0.98);
+            box-shadow: 0 0 15px rgba(95, 158, 255, 0.5);
         }
 
         /* Корзина */
@@ -195,16 +277,16 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(255, 255, 255, 0.98);
+            background: rgba(20, 20, 45, 0.95);
             backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            border-top: 1px solid rgba(100, 100, 200, 0.3);
             padding: 12px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             max-width: 480px;
             margin: 0 auto;
-            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
         }
 
         .cart-info {
@@ -214,7 +296,7 @@
         }
 
         .cart-count {
-            background: #007aff;
+            background: linear-gradient(135deg, #5f9eff, #8a6eff);
             color: white;
             border-radius: 20px;
             padding: 4px 10px;
@@ -225,16 +307,23 @@
         .cart-total {
             font-weight: 700;
             font-size: 18px;
+            color: #ffaa66;
         }
 
         .checkout-btn {
-            background: #1c1c1e;
+            background: linear-gradient(135deg, #ff66aa, #ff9966);
             border: none;
             padding: 10px 24px;
             border-radius: 30px;
             color: white;
             font-weight: 600;
             cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .checkout-btn:hover {
+            transform: scale(0.98);
+            box-shadow: 0 0 20px rgba(255, 102, 170, 0.5);
         }
 
         /* Модальное окно товара */
@@ -246,29 +335,53 @@
             right: 0;
             bottom: 0;
             background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
         }
 
         .modal-content {
-            background: white;
+            background: rgba(30, 30, 60, 0.95);
+            backdrop-filter: blur(10px);
             border-radius: 28px;
             max-width: 340px;
             width: 90%;
             padding: 24px;
             text-align: center;
+            border: 1px solid rgba(100, 100, 255, 0.5);
+        }
+
+        .modal-content h3 {
+            color: #ffffff;
+            margin-bottom: 12px;
+        }
+
+        .modal-content p {
+            color: #ffaa66;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
         }
 
         .modal-close {
-            margin-top: 16px;
-            background: #007aff;
+            background: linear-gradient(135deg, #5f9eff, #8a6eff);
             border: none;
             padding: 10px;
             border-radius: 30px;
             color: white;
             width: 100%;
             font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Сообщение о пустом поиске */
+        .no-results {
+            grid-column: span 2;
+            text-align: center;
+            padding: 40px;
+            color: #88aaff;
+            font-size: 16px;
         }
 
         @media (max-width: 480px) {
@@ -289,6 +402,15 @@
                 <div class="icons">
                     <span>🛍️</span>
                 </div>
+            </div>
+        </div>
+
+        <!-- Поиск -->
+        <div class="search-section">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" id="searchInput" placeholder="Поиск товаров...">
+                <button class="clear-search" id="clearSearch">✕</button>
             </div>
         </div>
 
@@ -320,7 +442,7 @@
         <div class="modal-content">
             <h3 id="modalTitle"></h3>
             <p id="modalPrice"></p>
-            <button class="modal-close" id="modalClose">Закрыть</button>
+            <button class="modal-close" id="modalClose">В корзину</button>
         </div>
     </div>
 
@@ -328,8 +450,8 @@
     <script>
         // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Разворачиваем на весь экран
-        tg.enableClosingConfirmation(); // Подтверждение при закрытии
+        tg.expand();
+        tg.enableClosingConfirmation();
 
         // Данные товаров
         const products = [
@@ -342,21 +464,43 @@
             { id: 7, name: "Vintage Tee", price: 1790, category: "tshirt", emoji: "👕", image: "👕" },
             { id: 8, name: "Beanie Hat", price: 890, category: "accessories", emoji: "🧢", image: "🧢" },
             { id: 9, name: "Puffer Jacket", price: 7990, category: "hoodie", emoji: "🧥", image: "🧥" },
-            { id: 10, name: "Jogger Pants", price: 3290, category: "pants", emoji: "👖", image: "👖" }
+            { id: 10, name: "Jogger Pants", price: 3290, category: "pants", emoji: "👖", image: "👖" },
+            { id: 11, name: "Space Hoodie", price: 6990, category: "hoodie", emoji: "🚀", image: "🚀" },
+            { id: 12, name: "Galaxy Tee", price: 2490, category: "tshirt", emoji: "🌌", image: "🌌" }
         ];
 
         let cart = [];
         let currentCategory = "all";
+        let searchQuery = "";
+
+        // Функция фильтрации товаров
+        function getFilteredProducts() {
+            let filtered = products;
+            
+            // Фильтр по категории
+            if (currentCategory !== "all") {
+                filtered = filtered.filter(p => p.category === currentCategory);
+            }
+            
+            // Фильтр по поиску
+            if (searchQuery.trim() !== "") {
+                const query = searchQuery.toLowerCase();
+                filtered = filtered.filter(p => 
+                    p.name.toLowerCase().includes(query) ||
+                    p.category.toLowerCase().includes(query)
+                );
+            }
+            
+            return filtered;
+        }
 
         // Функция рендеринга товаров
         function renderProducts() {
             const grid = document.getElementById('productsGrid');
-            const filtered = currentCategory === "all" 
-                ? products 
-                : products.filter(p => p.category === currentCategory);
+            const filtered = getFilteredProducts();
             
             if (filtered.length === 0) {
-                grid.innerHTML = '<div style="grid-column: span 2; text-align: center; padding: 40px;">Товаров нет</div>';
+                grid.innerHTML = '<div class="no-results">✨ Товары не найдены<br>Попробуйте изменить поиск</div>';
                 return;
             }
 
@@ -404,9 +548,8 @@
             }
             
             updateCartUI();
-            tg.HapticFeedback.impactOccurred('light'); // Вибрация (если поддерживается)
+            tg.HapticFeedback.impactOccurred('light');
             
-            // Показываем уведомление через Telegram
             tg.showPopup({
                 title: "Добавлено",
                 message: `${product.name} в корзине`,
@@ -422,7 +565,6 @@
             document.getElementById('cartCount').innerText = totalItems;
             document.getElementById('cartTotal').innerText = `${totalPrice.toLocaleString()} ₽`;
             
-            // Сохраняем в Telegram Cloud Storage
             tg.CloudStorage.setItem('cart', JSON.stringify(cart), (err) => {
                 if (err) console.error('CloudStorage error:', err);
             });
@@ -434,14 +576,12 @@
             if (!product) return;
             
             document.getElementById('modalTitle').innerText = product.name;
-            document.getElementById('modalPrice').innerHTML = `${product.price.toLocaleString()} ₽<br><small>Нажмите "В корзину" чтобы добавить</small>`;
+            document.getElementById('modalPrice').innerHTML = `${product.price.toLocaleString()} ₽<br><small style="font-size: 12px; color: #88aaff;">Нажмите кнопку чтобы добавить</small>`;
             
             const modal = document.getElementById('productModal');
             modal.style.display = 'flex';
             
-            // Временная замена кнопки закрытия на добавление в корзину
             const closeBtn = document.getElementById('modalClose');
-            const oldClick = closeBtn.onclick;
             closeBtn.onclick = () => {
                 addToCart(productId);
                 modal.style.display = 'none';
@@ -461,7 +601,6 @@
             
             const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
-            // Отправляем данные в бот через WebApp.sendData
             const orderData = {
                 action: 'order',
                 cart: cart.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price })),
@@ -470,7 +609,7 @@
             };
             
             tg.sendData(JSON.stringify(orderData));
-            tg.close(); // Закрываем мини-приложение после заказа
+            tg.close();
         }
 
         // Загрузка корзины из CloudStorage
@@ -487,15 +626,28 @@
             });
         }
 
-        // Обработка сообщений от бота (если нужно)
-        tg.onEvent('viewportChanged', () => {
-            tg.expand();
-        });
+        // Обновление поиска
+        function handleSearch() {
+            const input = document.getElementById('searchInput');
+            searchQuery = input.value;
+            renderProducts();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            searchQuery = '';
+            renderProducts();
+        }
 
         // Инициализация
         function init() {
             loadCart();
             renderProducts();
+            
+            // Поиск
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', handleSearch);
+            document.getElementById('clearSearch').addEventListener('click', clearSearch);
             
             // Категории
             document.querySelectorAll('.category-btn').forEach(btn => {
