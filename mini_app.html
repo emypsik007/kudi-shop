@@ -66,11 +66,64 @@
             font-size: 24px;
             text-align: center;
             background: linear-gradient(90deg, #00d9ff, #ff00ff);
-            /* Исправлено: добавлено стандартное свойство background-clip для совместимости */
             background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+
+        /* Загрузка */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 217, 255, 0.3);
+            border-top: 3px solid #00d9ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Ошибка */
+        .error-container {
+            text-align: center;
+            padding: 50px 20px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .error-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        .retry-btn {
+            margin-top: 20px;
+            padding: 10px 30px;
+            background: linear-gradient(90deg, #00d9ff, #0099ff);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .retry-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.5);
         }
 
         /* Поиск */
@@ -440,6 +493,20 @@
             <button class="category-btn" data-category="accessories">🎒 Аксессуары</button>
         </div>
 
+        <!-- Загрузка -->
+        <div id="loadingContainer" class="loading-container" style="display: none;">
+            <div class="loader"></div>
+            <p>Загрузка товаров...</p>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="errorContainer" class="error-container" style="display: none;">
+            <div class="error-icon">⚠️</div>
+            <p>Не удалось загрузить товары</p>
+            <p style="font-size: 14px; margin-top: 10px;">Проверьте подключение к серверу</p>
+            <button class="retry-btn" onclick="loadProducts()">🔄 Повторить</button>
+        </div>
+
         <!-- Главная секция -->
         <section class="section active" id="homeSection">
             <div class="products-grid" id="productsGrid"></div>
@@ -528,25 +595,83 @@
         // Данные пользователя
         const user = tg.initDataUnsafe?.user || {
             first_name: 'Гость',
-            username: 'guest'
+            username: 'guest',
+            id: 0
         };
 
-        // База данных товаров
-        const products = [
-            { id: 1, name: 'Худи "Космическая пыль"', price: 2990, category: 'hoodies', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Худи' },
-            { id: 2, name: 'Футболка "Небесная механика"', price: 1990, category: 'tshirts', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Футболка' },
-            { id: 3, name: 'Джоггеры "Галактический ветер"', price: 2490, category: 'pants', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Джоггеры' },
-            { id: 4, name: 'Худи "Туманность"', price: 3290, category: 'hoodies', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Худи+2' },
-            { id: 5, name: 'Футболка "Звёздный путь"', price: 2190, category: 'tshirts', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Футболка+2' },
-            { id: 6, name: 'Шорты "Орбита"', price: 1790, category: 'pants', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Шорты' },
-            { id: 7, name: 'Кепка "Астронавт"', price: 990, category: 'accessories', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Кепка' },
-            { id: 8, name: 'Рюкзак "Космос"', price: 3490, category: 'accessories', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Рюкзак' }
-        ];
-
-        // Состояние приложения
+        // Глобальные переменные
+        let products = [];
         let cart = JSON.parse(localStorage.getItem('kudi_cart')) || [];
         let favorites = JSON.parse(localStorage.getItem('kudi_favorites')) || [];
         let currentCategory = 'all';
+        
+        // API URL - замените на ваш реальный URL
+        const API_URL = 'http://localhost:5000/api/products';
+        // Для продакшена используйте:
+        // const API_URL = 'https://ваш-сервер.ru/api/products';
+
+        // Показать загрузку
+        function showLoading() {
+            document.getElementById('loadingContainer').style.display = 'flex';
+            document.getElementById('errorContainer').style.display = 'none';
+            document.getElementById('productsGrid').style.display = 'none';
+        }
+
+        // Скрыть загрузку
+        function hideLoading() {
+            document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('productsGrid').style.display = 'grid';
+        }
+
+        // Показать ошибку
+        function showError() {
+            document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('productsGrid').style.display = 'none';
+        }
+
+        // Загрузка товаров с сервера
+        async function loadProducts() {
+            showLoading();
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                products = await response.json();
+                
+                // Сохраняем в localStorage как кэш
+                localStorage.setItem('kudi_products_cache', JSON.stringify({
+                    data: products,
+                    timestamp: Date.now()
+                }));
+                
+                hideLoading();
+                
+                // Обновляем интерфейс
+                const query = document.getElementById('searchBar').value.toLowerCase();
+                const filtered = products.filter(p => 
+                    (currentCategory === 'all' || p.category === currentCategory) &&
+                    p.name.toLowerCase().includes(query)
+                );
+                renderProducts(filtered, 'productsGrid');
+                renderFavorites();
+                renderCart();
+                updateProfile();
+                
+            } catch (error) {
+                console.error('Ошибка загрузки товаров:', error);
+                showError();
+            }
+        }
 
         // Создание звёздного фона
         function createStars() {
@@ -568,7 +693,7 @@
             const container = document.getElementById(containerId);
             container.innerHTML = '';
 
-            if (productsToRender.length === 0) {
+            if (!productsToRender || productsToRender.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state" style="grid-column: 1/-1;">
                         <div class="empty-state-icon">🔍</div>
@@ -583,7 +708,7 @@
                 const card = document.createElement('div');
                 card.className = 'product-card';
                 card.innerHTML = `
-                    <img src="${product.image}" alt="${product.name}" class="product-image">
+                    <img src="${product.image}" alt="${product.name}" class="product-image" onerror="this.src='https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=No+Image'">
                     <h3 class="product-name">${product.name}</h3>
                     <p class="product-price">${product.price} ₽</p>
                     <div class="product-actions">
@@ -636,7 +761,7 @@
                 const cartItem = document.createElement('div');
                 cartItem.className = 'cart-item';
                 cartItem.innerHTML = `
-                    <img src="${product.image}" alt="${product.name}" class="cart-item-image">
+                    <img src="${product.image}" alt="${product.name}" class="cart-item-image" onerror="this.src='https://via.placeholder.com/80x80/1a1a4e/00d9ff?text=No+Image'">
                     <div class="cart-item-info">
                         <h4>${product.name}</h4>
                         <p style="color: #00d9ff;">${product.price} ₽</p>
@@ -656,11 +781,22 @@
         // Обновление профиля
         function updateProfile() {
             document.getElementById('profileName').textContent = user.first_name || 'Гость';
-            document.querySelector('#profileName + p').textContent = user.username ? '@' + user.username : '@guest';
+            const usernameElement = document.querySelector('#profileName + p');
+            if (usernameElement) {
+                usernameElement.textContent = user.username ? '@' + user.username : '@guest';
+            }
             
             if (user.photo_url) {
                 document.getElementById('profileAvatar').innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
             }
+            
+            // Загружаем статистику заказов
+            const orders = JSON.parse(localStorage.getItem('kudi_orders')) || [];
+            const userOrders = orders.filter(o => o.user_id === user.id);
+            document.getElementById('statOrders').textContent = userOrders.length;
+            
+            const totalSpent = userOrders.reduce((sum, order) => sum + order.total, 0);
+            document.getElementById('statSpent').textContent = totalSpent + ' ₽';
         }
 
         // Добавление в корзину
@@ -706,7 +842,14 @@
             }
 
             localStorage.setItem('kudi_favorites', JSON.stringify(favorites));
-            renderProducts(products.filter(p => currentCategory === 'all' || p.category === currentCategory), 'productsGrid');
+            
+            // Обновляем отображение
+            const query = document.getElementById('searchBar').value.toLowerCase();
+            const filtered = products.filter(p => 
+                (currentCategory === 'all' || p.category === currentCategory) &&
+                p.name.toLowerCase().includes(query)
+            );
+            renderProducts(filtered, 'productsGrid');
             renderFavorites();
             updateProfile();
         }
@@ -769,7 +912,24 @@
                 }, 0)
             };
 
+            // Сохраняем заказ локально
+            const orders = JSON.parse(localStorage.getItem('kudi_orders')) || [];
+            orders.push({
+                ...orderData,
+                user_id: user.id,
+                date: new Date().toISOString()
+            });
+            localStorage.setItem('kudi_orders', JSON.stringify(orders));
+
+            // Отправляем в Telegram
             tg.sendData(JSON.stringify(orderData));
+            
+            // Очищаем корзину
+            cart = [];
+            localStorage.setItem('kudi_cart', JSON.stringify(cart));
+            renderCart();
+            
+            showNotification('✅ Заказ оформлен! Менеджер свяжется с вами');
         }
 
         // Уведомления
@@ -786,6 +946,7 @@
 
         // Поиск товаров
         document.getElementById('searchBar').addEventListener('input', (e) => {
+            if (!products.length) return;
             const query = e.target.value.toLowerCase();
             const filtered = products.filter(p => 
                 (currentCategory === 'all' || p.category === currentCategory) &&
@@ -797,6 +958,7 @@
         // Фильтрация по категориям
         document.querySelectorAll('.category-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (!products.length) return;
                 document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentCategory = btn.dataset.category;
@@ -819,10 +981,7 @@
 
         // Инициализация
         createStars();
-        renderProducts(products, 'productsGrid');
-        renderFavorites();
-        renderCart();
-        updateProfile();
+        loadProducts();
 
         // Настройка цветов Telegram
         document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#0a0a2e');
