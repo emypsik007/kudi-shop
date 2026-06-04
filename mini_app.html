@@ -591,6 +591,7 @@
         // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
         tg.expand();
+        tg.ready();
 
         // Данные пользователя
         const user = tg.initDataUnsafe?.user || {
@@ -605,10 +606,115 @@
         let favorites = JSON.parse(localStorage.getItem('kudi_favorites')) || [];
         let currentCategory = 'all';
         
-        // API URL - замените на ваш реальный URL
-        const API_URL = 'http://localhost:5000/api/products';
-        // Для продакшена используйте:
-        // const API_URL = 'https://ваш-сервер.ru/api/products';
+        // ДЕМО-ТОВАРЫ (будут использоваться, пока нет реальных товаров от бота)
+        const DEMO_PRODUCTS = [
+            { id: 1, name: 'Космическое Худи', price: 2999, category: 'hoodies', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Hoodie' },
+            { id: 2, name: 'Неоновая Футболка', price: 1499, category: 'tshirts', image: 'https://via.placeholder.com/300x300/1a1a4e/ff00ff?text=T-Shirt' },
+            { id: 3, name: 'Галактические Штаны', price: 3499, category: 'pants', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Pants' },
+            { id: 4, name: 'Кибер Рюкзак', price: 1999, category: 'accessories', image: 'https://via.placeholder.com/300x300/1a1a4e/ff00ff?text=Backpack' },
+            { id: 5, name: 'Звёздное Худи', price: 2799, category: 'hoodies', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Star+Hoodie' },
+            { id: 6, name: 'Спортивные Штаны', price: 2499, category: 'pants', image: 'https://via.placeholder.com/300x300/1a1a4e/00d9ff?text=Sport+Pants' }
+        ];
+
+        // Функция для получения товаров от бота через WebApp
+        async function loadProducts() {
+            showLoading();
+            
+            try {
+                // Пытаемся загрузить из кэша
+                const cache = localStorage.getItem('kudi_products_cache');
+                if (cache) {
+                    const cached = JSON.parse(cache);
+                    // Кэш актуален 5 минут
+                    if (Date.now() - cached.timestamp < 5 * 60 * 1000 && cached.data && cached.data.length > 0) {
+                        products = cached.data;
+                        hideLoading();
+                        applyFiltersAndRender();
+                        renderFavorites();
+                        renderCart();
+                        updateProfile();
+                        return;
+                    }
+                }
+                
+                // Запрашиваем товары у бота через отправку сообщения
+                // Сохраняем данные для ответа бота
+                tg.sendData(JSON.stringify({ action: 'get_products' }));
+                
+                // Устанавливаем обработчик на получение данных от бота
+                // Бот отправит товары через WebApp
+                
+                // Пока ждём ответа, используем демо-товары
+                // В реальном приложении бот должен отправить товары через tg.sendData
+                setTimeout(() => {
+                    if (products.length === 0) {
+                        // Если бот не ответил, используем демо-товары
+                        products = DEMO_PRODUCTS;
+                        hideLoading();
+                        applyFiltersAndRender();
+                        renderFavorites();
+                        renderCart();
+                        updateProfile();
+                        showNotification('⚠️ Загружены демо-товары');
+                    }
+                }, 2000);
+                
+                // Ждём ответа от бота
+                tg.onEvent('mainButtonClicked', () => {});
+                
+            } catch (error) {
+                console.error('Ошибка загрузки товаров:', error);
+                // При ошибке используем демо-товары
+                products = DEMO_PRODUCTS;
+                hideLoading();
+                applyFiltersAndRender();
+                renderFavorites();
+                renderCart();
+                updateProfile();
+                showNotification('⚠️ Загружены демо-товары');
+            }
+        }
+
+        // Применение фильтров и рендер
+        function applyFiltersAndRender() {
+            const query = document.getElementById('searchBar').value.toLowerCase();
+            const filtered = products.filter(p => 
+                (currentCategory === 'all' || p.category === currentCategory) &&
+                p.name.toLowerCase().includes(query)
+            );
+            renderProducts(filtered, 'productsGrid');
+        }
+
+        // Функция для обновления товаров из бота
+        window.updateProductsFromBot = function(productsData) {
+            if (productsData && Array.isArray(productsData) && productsData.length > 0) {
+                products = productsData;
+                localStorage.setItem('kudi_products_cache', JSON.stringify({
+                    data: products,
+                    timestamp: Date.now()
+                }));
+                hideLoading();
+                applyFiltersAndRender();
+                renderFavorites();
+                renderCart();
+                updateProfile();
+            }
+        };
+
+        // Создание звёздного фона
+        function createStars() {
+            const starsContainer = document.getElementById('stars');
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.width = Math.random() * 3 + 1 + 'px';
+                star.style.height = star.style.width;
+                star.style.animationDelay = Math.random() * 2 + 's';
+                starsContainer.appendChild(star);
+            }
+        }
 
         // Показать загрузку
         function showLoading() {
@@ -630,67 +736,10 @@
             document.getElementById('productsGrid').style.display = 'none';
         }
 
-        // Загрузка товаров с сервера
-        async function loadProducts() {
-            showLoading();
-            
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                products = await response.json();
-                
-                // Сохраняем в localStorage как кэш
-                localStorage.setItem('kudi_products_cache', JSON.stringify({
-                    data: products,
-                    timestamp: Date.now()
-                }));
-                
-                hideLoading();
-                
-                // Обновляем интерфейс
-                const query = document.getElementById('searchBar').value.toLowerCase();
-                const filtered = products.filter(p => 
-                    (currentCategory === 'all' || p.category === currentCategory) &&
-                    p.name.toLowerCase().includes(query)
-                );
-                renderProducts(filtered, 'productsGrid');
-                renderFavorites();
-                renderCart();
-                updateProfile();
-                
-            } catch (error) {
-                console.error('Ошибка загрузки товаров:', error);
-                showError();
-            }
-        }
-
-        // Создание звёздного фона
-        function createStars() {
-            const starsContainer = document.getElementById('stars');
-            for (let i = 0; i < 100; i++) {
-                const star = document.createElement('div');
-                star.className = 'star';
-                star.style.left = Math.random() * 100 + '%';
-                star.style.top = Math.random() * 100 + '%';
-                star.style.width = Math.random() * 3 + 1 + 'px';
-                star.style.height = star.style.width;
-                star.style.animationDelay = Math.random() * 2 + 's';
-                starsContainer.appendChild(star);
-            }
-        }
-
         // Рендер товаров
         function renderProducts(productsToRender, containerId) {
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = '';
 
             if (!productsToRender || productsToRender.length === 0) {
@@ -728,9 +777,14 @@
             renderProducts(favoriteProducts, 'favoritesGrid');
             
             const emptyState = document.getElementById('favoritesEmpty');
-            emptyState.style.display = favoriteProducts.length === 0 ? 'block' : 'none';
+            if (emptyState) {
+                emptyState.style.display = favoriteProducts.length === 0 ? 'block' : 'none';
+            }
             
-            document.getElementById('statFavorites').textContent = favoriteProducts.length;
+            const statFavorites = document.getElementById('statFavorites');
+            if (statFavorites) {
+                statFavorites.textContent = favoriteProducts.length;
+            }
         }
 
         // Рендер корзины
@@ -739,16 +793,17 @@
             const emptyState = document.getElementById('cartEmpty');
             const summary = document.getElementById('cartSummary');
             
+            if (!container) return;
             container.innerHTML = '';
 
             if (cart.length === 0) {
-                emptyState.style.display = 'block';
-                summary.style.display = 'none';
+                if (emptyState) emptyState.style.display = 'block';
+                if (summary) summary.style.display = 'none';
                 return;
             }
 
-            emptyState.style.display = 'none';
-            summary.style.display = 'block';
+            if (emptyState) emptyState.style.display = 'none';
+            if (summary) summary.style.display = 'block';
 
             let total = 0;
 
@@ -775,28 +830,44 @@
                 container.appendChild(cartItem);
             });
 
-            document.getElementById('cartTotal').textContent = total + ' ₽';
+            const cartTotalSpan = document.getElementById('cartTotal');
+            if (cartTotalSpan) {
+                cartTotalSpan.textContent = total + ' ₽';
+            }
         }
 
         // Обновление профиля
         function updateProfile() {
-            document.getElementById('profileName').textContent = user.first_name || 'Гость';
+            const profileNameSpan = document.getElementById('profileName');
+            if (profileNameSpan) {
+                profileNameSpan.textContent = user.first_name || 'Гость';
+            }
+            
             const usernameElement = document.querySelector('#profileName + p');
             if (usernameElement) {
                 usernameElement.textContent = user.username ? '@' + user.username : '@guest';
             }
             
             if (user.photo_url) {
-                document.getElementById('profileAvatar').innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                const profileAvatar = document.getElementById('profileAvatar');
+                if (profileAvatar) {
+                    profileAvatar.innerHTML = `<img src="${user.photo_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                }
             }
             
             // Загружаем статистику заказов
             const orders = JSON.parse(localStorage.getItem('kudi_orders')) || [];
             const userOrders = orders.filter(o => o.user_id === user.id);
-            document.getElementById('statOrders').textContent = userOrders.length;
+            const statOrdersSpan = document.getElementById('statOrders');
+            if (statOrdersSpan) {
+                statOrdersSpan.textContent = userOrders.length;
+            }
             
             const totalSpent = userOrders.reduce((sum, order) => sum + order.total, 0);
-            document.getElementById('statSpent').textContent = totalSpent + ' ₽';
+            const statSpentSpan = document.getElementById('statSpent');
+            if (statSpentSpan) {
+                statSpentSpan.textContent = totalSpent + ' ₽';
+            }
         }
 
         // Добавление в корзину
@@ -844,12 +915,7 @@
             localStorage.setItem('kudi_favorites', JSON.stringify(favorites));
             
             // Обновляем отображение
-            const query = document.getElementById('searchBar').value.toLowerCase();
-            const filtered = products.filter(p => 
-                (currentCategory === 'all' || p.category === currentCategory) &&
-                p.name.toLowerCase().includes(query)
-            );
-            renderProducts(filtered, 'productsGrid');
+            applyFiltersAndRender();
             renderFavorites();
             updateProfile();
         }
@@ -871,11 +937,11 @@
             const categoriesContainer = document.getElementById('categoriesContainer');
             
             if (sectionName === 'home') {
-                searchContainer.style.display = 'block';
-                categoriesContainer.style.display = 'flex';
+                if (searchContainer) searchContainer.style.display = 'block';
+                if (categoriesContainer) categoriesContainer.style.display = 'flex';
             } else {
-                searchContainer.style.display = 'none';
-                categoriesContainer.style.display = 'none';
+                if (searchContainer) searchContainer.style.display = 'none';
+                if (categoriesContainer) categoriesContainer.style.display = 'none';
             }
 
             // Рендерим контент секций
@@ -901,14 +967,14 @@
                 cart: cart.map(item => {
                     const product = products.find(p => p.id === item.id);
                     return {
-                        name: product.name,
-                        price: product.price,
+                        name: product ? product.name : 'Товар',
+                        price: product ? product.price : 0,
                         quantity: item.quantity
                     };
                 }),
                 total: cart.reduce((sum, item) => {
                     const product = products.find(p => p.id === item.id);
-                    return sum + (product.price * item.quantity);
+                    return sum + (product ? product.price * item.quantity : 0);
                 }, 0)
             };
 
@@ -945,15 +1011,13 @@
         }
 
         // Поиск товаров
-        document.getElementById('searchBar').addEventListener('input', (e) => {
-            if (!products.length) return;
-            const query = e.target.value.toLowerCase();
-            const filtered = products.filter(p => 
-                (currentCategory === 'all' || p.category === currentCategory) &&
-                p.name.toLowerCase().includes(query)
-            );
-            renderProducts(filtered, 'productsGrid');
-        });
+        const searchBar = document.getElementById('searchBar');
+        if (searchBar) {
+            searchBar.addEventListener('input', (e) => {
+                if (!products.length) return;
+                applyFiltersAndRender();
+            });
+        }
 
         // Фильтрация по категориям
         document.querySelectorAll('.category-btn').forEach(btn => {
@@ -962,13 +1026,7 @@
                 document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentCategory = btn.dataset.category;
-                
-                const query = document.getElementById('searchBar').value.toLowerCase();
-                const filtered = products.filter(p => 
-                    (currentCategory === 'all' || p.category === currentCategory) &&
-                    p.name.toLowerCase().includes(query)
-                );
-                renderProducts(filtered, 'productsGrid');
+                applyFiltersAndRender();
             });
         });
 
@@ -986,6 +1044,9 @@
         // Настройка цветов Telegram
         document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#0a0a2e');
         document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#ffffff');
+        
+        // Скрываем кнопку "Назад" в WebApp
+        tg.BackButton.hide();
     </script>
 </body>
 </html>
