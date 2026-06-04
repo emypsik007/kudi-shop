@@ -33,7 +33,7 @@ if not BOT_TOKEN:
 # ID разработчика
 ADMIN_ID = 1755577918
 
-# URL вашего мини-приложения (ЗАМЕНИТЕ НА СВОЙ!)
+# URL вашего мини-приложения
 WEBAPP_URL = "https://emypsik007.github.io/kudi-shop/mini_app.html"
 
 # Состояния для ConversationHandler
@@ -115,7 +115,7 @@ def delete_product(product_id):
     conn.commit()
     conn.close()
 
-# Функция для создания главного меню (без параметра update)
+# Функция для создания главного меню
 def get_main_menu(user_id=None):
     keyboard = [
         [InlineKeyboardButton("📢 Канал", url='https://t.me/+ajAM1qe9EBszMmFi')],
@@ -176,11 +176,91 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_main_menu(user_id)
     )
 
+# Обработчик названия товара
+async def add_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.message.text
+    context.user_data['add_product'] = context.user_data.get('add_product', {})
+    context.user_data['add_product']['name'] = name
+    
+    await update.message.reply_text(
+        "💰 Введите цену товара (только число):"
+    )
+    return PRICE
+
+# Обработчик цены товара
+async def add_product_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        price = int(update.message.text)
+        if price <= 0:
+            raise ValueError
+        context.user_data['add_product']['price'] = price
+        
+        await update.message.reply_text(
+            "🏷️ Выберите категорию товара:",
+            reply_markup=get_category_keyboard()
+        )
+        return CATEGORY
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введите корректное число (больше 0).\n\n"
+            "Введите цену товара:"
+        )
+        return PRICE
+
+# Обработчик категории (через кнопки)
+async def add_product_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    category = query.data.split('_')[1]
+    context.user_data['add_product']['category'] = category
+    
+    await query.edit_message_text(
+        text="🖼️ Введите URL изображения товара:"
+    )
+    return IMAGE_URL
+
+# Обработчик изображения товара
+async def add_product_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    image_url = update.message.text
+    
+    if not image_url.startswith(('http://', 'https://')):
+        await update.message.reply_text(
+            "❌ Пожалуйста, введите корректный URL (должен начинаться с http:// или https://)\n\n"
+            "Введите URL изображения:"
+        )
+        return IMAGE_URL
+    
+    product_data = context.user_data['add_product']
+    
+    add_product(
+        product_data['name'],
+        product_data['price'],
+        product_data['category'],
+        image_url
+    )
+    
+    await update.message.reply_text(
+        f"✅ Товар успешно добавлен!\n\n"
+        f"📦 *{product_data['name']}*\n"
+        f"💰 {product_data['price']} ₽\n"
+        f"🏷️ Категория: {CATEGORY_NAMES.get(product_data['category'], product_data['category'])}",
+        parse_mode='Markdown',
+        reply_markup=get_admin_menu()
+    )
+    
+    del context.user_data['add_product']
+    return ConversationHandler.END
+
 # Обработчик нажатий на инлайн кнопки
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     await query.answer()
+    
+    # Обработка выбора категории при добавлении товара
+    if query.data.startswith('cat_') and 'add_product' in context.user_data:
+        return await add_product_category(update, context)
     
     if query.data == 'admin_panel':
         if user_id == ADMIN_ID:
@@ -237,7 +317,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = "📋 *Список товаров:*\n\n"
         keyboard = []
         
-        for product in products[:10]:  # Показываем первые 10
+        for product in products[:10]:
             product_id, name, price, category, image_url = product
             message += f"🆔 *ID:* {product_id}\n"
             message += f"📦 *Название:* {name}\n"
@@ -284,7 +364,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data='admin_panel')]])
         )
     
-    elif query.data.startswith('edit_'):
+    elif query.data.startswith('edit_') and not query.data.startswith('edit_name_') and not query.data.startswith('edit_price_') and not query.data.startswith('edit_category_') and not query.data.startswith('edit_image_'):
         if user_id != ADMIN_ID:
             await query.answer("У вас нет доступа!", show_alert=True)
             return
@@ -298,8 +378,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_admin_menu()
             )
             return
-        
-        context.user_data['edit_product'] = {'id': product_id}
         
         keyboard = [
             [InlineKeyboardButton("✏️ Изменить название", callback_data=f'edit_name_{product_id}')],
@@ -392,98 +470,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return IMAGE_URL
     
-    elif query.data.startswith('cat_'):
-        category = query.data.split('_')[1]
-        
-        if 'add_product' in context.user_data:
-            context.user_data['add_product']['category'] = category
-            await query.edit_message_text(
-                text="🖼️ Введите URL изображения товара:"
-            )
-            return IMAGE_URL
-        elif 'edit_field' in context.user_data:
-            field_data = context.user_data['edit_field']
-            if field_data['type'] == 'category':
-                product = get_product_by_id(field_data['id'])
-                if product:
-                    update_product(field_data['id'], product[1], product[2], category, product[4])
-                    await query.edit_message_text(
-                        text="✅ Категория успешно обновлена!",
-                        reply_markup=get_admin_menu()
-                    )
-                    del context.user_data['edit_field']
-                return ConversationHandler.END
-    
     elif query.data == 'cancel_add':
         if 'add_product' in context.user_data:
             del context.user_data['add_product']
+        if 'edit_field' in context.user_data:
+            del context.user_data['edit_field']
         await query.edit_message_text(
-            text="❌ Добавление товара отменено.",
+            text="❌ Действие отменено.",
             reply_markup=get_admin_menu()
         )
         return ConversationHandler.END
-
-# Обработчик названия товара
-async def add_product_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.message.text
-    context.user_data['add_product']['name'] = name
-    
-    await update.message.reply_text(
-        "💰 Введите цену товара (только число):"
-    )
-    return PRICE
-
-# Обработчик цены товара
-async def add_product_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        price = int(update.message.text)
-        if price <= 0:
-            raise ValueError
-        context.user_data['add_product']['price'] = price
-        
-        await update.message.reply_text(
-            "🏷️ Выберите категорию товара:",
-            reply_markup=get_category_keyboard()
-        )
-        return CATEGORY
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Пожалуйста, введите корректное число (больше 0).\n\n"
-            "Введите цену товара:"
-        )
-        return PRICE
-
-# Обработчик изображения товара
-async def add_product_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    image_url = update.message.text
-    
-    if not image_url.startswith(('http://', 'https://')):
-        await update.message.reply_text(
-            "❌ Пожалуйста, введите корректный URL (должен начинаться с http:// или https://)\n\n"
-            "Введите URL изображения:"
-        )
-        return IMAGE_URL
-    
-    product_data = context.user_data['add_product']
-    
-    add_product(
-        product_data['name'],
-        product_data['price'],
-        product_data['category'],
-        image_url
-    )
-    
-    await update.message.reply_text(
-        f"✅ Товар успешно добавлен!\n\n"
-        f"📦 *{product_data['name']}*\n"
-        f"💰 {product_data['price']} ₽\n"
-        f"🏷️ Категория: {CATEGORY_NAMES.get(product_data['category'], product_data['category'])}",
-        parse_mode='Markdown',
-        reply_markup=get_admin_menu()
-    )
-    
-    del context.user_data['add_product']
-    return ConversationHandler.END
 
 # Обработчик редактирования поля
 async def edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -511,6 +507,7 @@ async def edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ Цена изменена на: {new_value} ₽", reply_markup=get_admin_menu())
         except ValueError:
             await update.message.reply_text("❌ Пожалуйста, введите корректное число (больше 0).", reply_markup=get_admin_menu())
+            return PRICE
     
     elif field_data['type'] == 'image':
         new_value = update.message.text
@@ -533,7 +530,51 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         order = json.loads(data)
         
-        if order.get('action') == 'order':
+        # Обработка запроса на получение списка товаров
+        if order.get('action') == 'get_products':
+            products = get_all_products()
+            products_list = []
+            
+            for product in products:
+                products_list.append({
+                    'id': product[0],
+                    'name': product[1],
+                    'price': product[2],
+                    'category': product[3],
+                    'image': product[4]
+                })
+            
+            # Отправляем товары обратно в WebApp
+            # Для этого используем отправку сообщения с WebApp-кнопкой,
+            # которая передаст данные через sendData
+            await update.message.reply_text(
+                "📦 Товары загружены",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "🛍️ Открыть магазин",
+                        web_app={'url': WEBAPP_URL}
+                    )
+                ]])
+            )
+            
+            # Отправляем данные о товарах через callback
+            # Сохраняем в контексте для последующей отправки
+            context.user_data['products_to_send'] = products_list
+            
+            # Отправляем сообщение с данными товаров
+            # WebApp может получить их через бота
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=f"📋 *Список товаров:*\n\n" + "\n".join([
+                    f"• {p['name']} - {p['price']} ₽" for p in products_list[:5]
+                ]) + (f"\n\n*Всего товаров:* {len(products_list)}" if len(products_list) > 5 else ""),
+                parse_mode='Markdown'
+            )
+            
+            return
+        
+        # Обработка оформления заказа
+        elif order.get('action') == 'order':
             order_text = "🛍️ *Новый заказ!*\n\n"
             order_text += f"👤 *Клиент:* @{user.username if user.username else 'неизвестно'}\n"
             order_text += f"📛 *Имя:* {user.first_name}\n"
@@ -583,9 +624,13 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✅ Заказ оформлен! Наш менеджер свяжется с вами в ближайшее время.",
                 reply_markup=get_main_menu(user.id)
             )
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка парсинга JSON: {e}")
+        await update.message.reply_text("Произошла ошибка при обработке данных.")
     except Exception as e:
-        logger.error(f"Ошибка обработки заказа: {e}")
-        await update.message.reply_text("Произошла ошибка при оформлении заказа. Попробуйте позже.")
+        logger.error(f"Ошибка обработки данных из WebApp: {e}")
+        await update.message.reply_text("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 # Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -655,15 +700,15 @@ def main():
             PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_field_value)],
             IMAGE_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_field_value)],
         },
-        fallbacks=[CallbackQueryHandler(button_callback, pattern='^list_products$')],
+        fallbacks=[CallbackQueryHandler(button_callback, pattern='^cancel_add$')],
         per_message=False,
     )
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
-    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(add_product_handler)
     application.add_handler(edit_product_handler)
+    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
