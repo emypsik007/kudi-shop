@@ -113,13 +113,7 @@ def update_product(product_id, name, price, category, photos):
 
 # Удалить товар
 def delete_product(product_id):
-    conn = sqlite3.connect('products.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM products WHERE id = ?', (product_id,))
-    conn.commit()
-    conn.close()
-    
-    # Удаляем файлы фото товара
+    # Получаем пути к фото перед удалением
     product = get_product_by_id(product_id)
     if product:
         photos = json.loads(product[4])
@@ -129,6 +123,12 @@ def delete_product(product_id):
                     os.remove(photo_path)
                 except:
                     pass
+    
+    conn = sqlite3.connect('products.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM products WHERE id = ?', (product_id,))
+    conn.commit()
+    conn.close()
 
 # Функция для создания главного меню
 def get_main_menu(user_id=None):
@@ -162,6 +162,32 @@ def get_category_keyboard():
         keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
     keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data='cancel_add')])
     return InlineKeyboardMarkup(keyboard)
+
+# Получить список товаров для отправки в WebApp
+def get_products_for_webapp():
+    products = get_all_products()
+    products_list = []
+    
+    for product in products:
+        photos = json.loads(product[4]) if product[4] else []
+        photos_data = []
+        
+        for photo_path in photos[:3]:  # Отправляем первые 3 фото
+            if os.path.exists(photo_path):
+                with open(photo_path, 'rb') as f:
+                    photo_base64 = base64.b64encode(f.read()).decode('utf-8')
+                    photos_data.append(f"data:image/jpeg;base64,{photo_base64}")
+        
+        products_list.append({
+            'id': product[0],
+            'name': product[1],
+            'price': product[2],
+            'category': product[3],
+            'photos': photos_data,
+            'main_photo': photos_data[0] if photos_data else None
+        })
+    
+    return products_list
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -376,7 +402,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Обработка выбора категории при добавлении товара
     if query.data.startswith('cat_') and 'add_product' in context.user_data:
-        return await add_product_category(update, context)
+        category = query.data.split('_')[1]
+        context.user_data['add_product']['category'] = category
+        
+        # Инициализируем список фото
+        if 'photos' not in context.user_data['add_product']:
+            context.user_data['add_product']['photos'] = []
+        
+        await query.edit_message_text(
+            text="📸 Отправьте фото товара (можно до 5 штук).\n\n"
+                 "Просто отправьте фото из галереи или сделайте новое.\n"
+                 "После каждого фото вы сможете добавить еще или завершить."
+        )
+        return PHOTOS
     
     if query.data == 'admin_panel':
         if user_id == ADMIN_ID:
@@ -481,7 +519,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data='admin_panel')]])
         )
     
-    elif query.data.startswith('edit_') and not query.data.startswith('edit_name_') and not query.data.startswith('edit_price_') and not query.data.startswith('edit_category_') and not query.data.startswith('edit_image_'):
+    elif query.data.startswith('edit_') and not query.data.startswith('edit_name_') and not query.data.startswith('edit_price_') and not query.data.startswith('edit_category_') and not query.data.startswith('edit_photos_'):
         if user_id != ADMIN_ID:
             await query.answer("У вас нет доступа!", show_alert=True)
             return
@@ -640,6 +678,10 @@ async def edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Пожалуйста, введите корректное число (больше 0).", reply_markup=get_admin_menu())
             return PRICE
     
+    elif field_data['type'] == 'category':
+        # Категория обрабатывается через callback
+        pass
+    
     elif field_data['type'] == 'photos':
         if update.message.photo:
             # Получаем фото
@@ -705,41 +747,28 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Обработка запроса на получение списка товаров
         if request.get('action') == 'get_products':
-            products = get_all_products()
-            products_list = []
+            products_list = get_products_for_webapp()
             
-            for product in products:
-                # Загружаем фото и конвертируем в base64 для отправки в WebApp
-                photos = json.loads(product[4]) if product[4] else []
-                photos_data = []
-                
-                for photo_path in photos[:3]:  # Отправляем первые 3 фото для быстрой загрузки
-                    if os.path.exists(photo_path):
-                        with open(photo_path, 'rb') as f:
-                            photo_base64 = base64.b64encode(f.read()).decode('utf-8')
-                            photos_data.append(f"data:image/jpeg;base64,{photo_base64}")
-                
-                products_list.append({
-                    'id': product[0],
-                    'name': product[1],
-                    'price': product[2],
-                    'category': product[3],
-                    'photos': photos_data,
-                    'main_photo': photos_data[0] if photos_data else None
-                })
+            # Кодируем товары в JSON для передачи через URL
+            products_json = json.dumps(products_list)
+            import urllib.parse
+            products_encoded = urllib.parse.quote(products_json)
             
-            # Отправляем товары через callback
+            # Отправляем сообщение с кнопкой, которая передаст товары через URL параметр
             await update.message.reply_text(
-                f"✅ Загружено {len(products_list)} товаров",
+                f"🛍️ *Магазин KUDI SHOP*\n\n"
+                f"📦 Товаров в наличии: {len(products_list)}\n\n"
+                f"Нажмите на кнопку ниже, чтобы открыть магазин с товарами:",
+                parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "🛍️ Обновить магазин",
-                        web_app={'url': WEBAPP_URL}
+                        "🛍️ Открыть магазин",
+                        web_app={'url': f"{WEBAPP_URL}?products={products_encoded}"}
                     )
                 ]])
             )
             
-            # Отправляем JSON с товарами
+            # Также отправляем простое сообщение для отладки
             if products_list:
                 preview_text = "📋 *Товары в базе:*\n\n"
                 for i, p in enumerate(products_list[:10]):
@@ -806,27 +835,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✅ Заказ оформлен! Наш менеджер свяжется с вами в ближайшее время.",
                 reply_markup=get_main_menu(user.id)
             )
-        
-        # Обработка синхронизации товаров
-        elif request.get('action') == 'sync_products':
-            products = get_all_products()
-            products_list = []
-            
-            for product in products:
-                photos = json.loads(product[4]) if product[4] else []
-                products_list.append({
-                    'id': product[0],
-                    'name': product[1],
-                    'price': product[2],
-                    'category': product[3],
-                    'photos': photos
-                })
-            
-            await update.message.reply_text(
-                f"🔄 Синхронизация завершена. Загружено {len(products_list)} товаров.",
-                reply_markup=get_main_menu(user.id)
-            )
-            return
     
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка парсинга JSON: {e}")
@@ -901,7 +909,6 @@ def main():
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_field_value)],
             PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_field_value)],
-            CATEGORY: [CallbackQueryHandler(button_callback, pattern='^cat_')],
             PHOTOS: [MessageHandler(filters.PHOTO, edit_field_value)],
         },
         fallbacks=[CallbackQueryHandler(button_callback, pattern='^cancel_add$')],
