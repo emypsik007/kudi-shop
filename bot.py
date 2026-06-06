@@ -5,6 +5,7 @@ import sys
 import json
 import sqlite3
 import base64
+import zlib
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -113,7 +114,6 @@ def update_product(product_id, name, price, category, photos):
 
 # Удалить товар
 def delete_product(product_id):
-    # Получаем пути к фото перед удалением
     product = get_product_by_id(product_id)
     if product:
         photos = json.loads(product[4])
@@ -130,16 +130,73 @@ def delete_product(product_id):
     conn.commit()
     conn.close()
 
-# Функция для создания главного меню
+# Функция для сжатия и кодирования данных в base64
+def compress_and_encode(data):
+    """Сжимает данные и кодирует в base64 для передачи в URL"""
+    json_str = json.dumps(data, ensure_ascii=False)
+    compressed = zlib.compress(json_str.encode('utf-8'))
+    encoded = base64.urlsafe_b64encode(compressed).decode('ascii')
+    return encoded
+
+# Получить список товаров для отправки в WebApp через URL (с фото в base64)
+def get_products_for_webapp_with_images():
+    products = get_all_products()
+    products_list = []
+    
+    for product in products:
+        photos = json.loads(product[4]) if product[4] else []
+        photos_base64 = []
+        
+        # Конвертируем фото в base64 для отображения в WebApp
+        for photo_path in photos[:3]:  # Берем первые 3 фото
+            if os.path.exists(photo_path):
+                try:
+                    with open(photo_path, 'rb') as f:
+                        photo_base64 = base64.b64encode(f.read()).decode('utf-8')
+                        # Добавляем префикс data:image/jpeg;base64,
+                        photos_base64.append(f"data:image/jpeg;base64,{photo_base64}")
+                except Exception as e:
+                    logger.error(f"Ошибка конвертации фото {photo_path}: {e}")
+                    photos_base64.append("")
+            else:
+                photos_base64.append("")
+        
+        # Фильтруем пустые фото
+        photos_base64 = [p for p in photos_base64 if p]
+        
+        products_list.append({
+            'id': product[0],
+            'name': product[1],
+            'price': product[2],
+            'category': product[3],
+            'photos': photos_base64,
+            'main_photo': photos_base64[0] if photos_base64 else None
+        })
+    
+    return products_list
+
+# Создание главного меню
 def get_main_menu(user_id=None):
     keyboard = [
         [InlineKeyboardButton("📢 Канал", url='https://t.me/+ajAM1qe9EBszMmFi')],
         [InlineKeyboardButton("⭐️ Отзывы", url='https://t.me/otzivi_kudishop')],
         [InlineKeyboardButton("🏪 Авито", url='https://www.avito.ru/user/14fc9')],
-        [InlineKeyboardButton("🛍️ Магазин", web_app={'url': WEBAPP_URL})]
     ]
     
-    # Добавляем админ-панель для разработчика
+    # Добавляем кнопку магазина с параметром товаров
+    products_data = get_products_for_webapp_with_images()
+    if products_data:
+        encoded_data = compress_and_encode(products_data)
+        # Обрезаем, если URL слишком длинный (Telegram имеет лимит ~4096 символов)
+        if len(encoded_data) < 4000:
+            shop_url = f"{WEBAPP_URL}?data={encoded_data}"
+        else:
+            # Если данных много, отправляем без предзагрузки, WebApp сам запросит
+            shop_url = WEBAPP_URL
+        keyboard.append([InlineKeyboardButton("🛍️ Магазин", web_app={'url': shop_url})])
+    else:
+        keyboard.append([InlineKeyboardButton("🛍️ Магазин", web_app={'url': WEBAPP_URL})])
+    
     if user_id == ADMIN_ID:
         keyboard.append([InlineKeyboardButton("⚙️ Админ-панель", callback_data='admin_panel')])
     
@@ -162,35 +219,6 @@ def get_category_keyboard():
         keyboard.append([InlineKeyboardButton(cat_name, callback_data=f'cat_{cat_id}')])
     keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data='cancel_add')])
     return InlineKeyboardMarkup(keyboard)
-
-# Получить список товаров для отправки в WebApp (только URL фото, не base64)
-def get_products_for_webapp():
-    products = get_all_products()
-    products_list = []
-    
-    # Получаем базовый URL для фото (если фото хранятся локально, нужно их хостить)
-    # Временно используем прямые пути - для GitHub Pages нужно загружать фото отдельно
-    for product in products:
-        photos = json.loads(product[4]) if product[4] else []
-        # Для локального тестирования - оставляем пути
-        # Для продакшена фото нужно загружать на хостинг
-        photos_urls = []
-        for photo_path in photos[:5]:
-            # Так как фото хранятся локально, а WebApp на GitHub, фото не будут отображаться
-            # Временно используем плейсхолдер
-            # В реальном проекте нужно загружать фото на Imgur или другой хостинг
-            photos_urls.append(photo_path)
-        
-        products_list.append({
-            'id': product[0],
-            'name': product[1],
-            'price': product[2],
-            'category': product[3],
-            'photos': photos_urls,
-            'main_photo': photos_urls[0] if photos_urls else None
-        })
-    
-    return products_list
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,7 +287,6 @@ async def add_product_category(update: Update, context: ContextTypes.DEFAULT_TYP
     category = query.data.split('_')[1]
     context.user_data['add_product']['category'] = category
     
-    # Инициализируем список фото
     if 'photos' not in context.user_data['add_product']:
         context.user_data['add_product']['photos'] = []
     
@@ -272,7 +299,6 @@ async def add_product_category(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # Обработчик добавления фото
 async def add_product_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик получения фото для товара"""
     user_id = update.effective_user.id
     
     if user_id != ADMIN_ID:
@@ -282,32 +308,23 @@ async def add_product_photos(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if 'add_product' not in context.user_data:
         context.user_data['add_product'] = {}
     
-    # Получаем фото
     if 'photos' not in context.user_data['add_product']:
         context.user_data['add_product']['photos'] = []
     
-    # Проверяем, есть ли фото в сообщении
     if update.message.photo:
-        # Получаем самое большое фото
         photo_file = await update.message.photo[-1].get_file()
         timestamp = int(datetime.now().timestamp())
         product_name = context.user_data['add_product'].get('name', 'product')
         filename = f"{product_name}_{len(context.user_data['add_product']['photos'])+1}_{timestamp}.jpg"
-        # Очищаем имя файла от недопустимых символов
         filename = "".join(c for c in filename if c.isalnum() or c in '._-')
         file_path = f"product_photos/{filename}"
         
-        # Скачиваем фото
         await photo_file.download_to_drive(file_path)
-        
-        # Сохраняем путь к фото
         context.user_data['add_product']['photos'].append(file_path)
         
-        # Проверяем сколько фото уже добавлено
         photos_count = len(context.user_data['add_product']['photos'])
         
         if photos_count >= 5:
-            # Если достигли лимита, завершаем добавление
             product_data = context.user_data['add_product']
             
             add_product(
@@ -317,7 +334,6 @@ async def add_product_photos(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 product_data['photos']
             )
             
-            # Отправляем превью с первым фото
             with open(product_data['photos'][0], 'rb') as photo:
                 await update.message.reply_photo(
                     photo=photo,
@@ -333,7 +349,6 @@ async def add_product_photos(update: Update, context: ContextTypes.DEFAULT_TYPE)
             del context.user_data['add_product']
             return ConversationHandler.END
         else:
-            # Предлагаем добавить еще фото или завершить
             keyboard = [
                 [InlineKeyboardButton("📸 Добавить еще фото", callback_data='add_more_photos')],
                 [InlineKeyboardButton("✅ Завершить добавление", callback_data='finish_adding_product')]
@@ -360,11 +375,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await query.answer()
     
-    # Обработка добавления фото
     if query.data == 'add_more_photos':
-        await query.edit_message_text(
-            "📸 Отправьте следующее фото товара:"
-        )
+        await query.edit_message_text("📸 Отправьте следующее фото товара:")
         return PHOTOS
     
     elif query.data == 'finish_adding_product':
@@ -378,7 +390,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     product_data['photos']
                 )
                 
-                # Отправляем превью с первым фото
                 with open(product_data['photos'][0], 'rb') as photo:
                     await query.message.reply_photo(
                         photo=photo,
@@ -404,12 +415,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return PHOTOS
         return ConversationHandler.END
     
-    # Обработка выбора категории при добавлении товара
     if query.data.startswith('cat_') and 'add_product' in context.user_data:
         category = query.data.split('_')[1]
         context.user_data['add_product']['category'] = category
         
-        # Инициализируем список фото
         if 'photos' not in context.user_data['add_product']:
             context.user_data['add_product']['photos'] = []
         
@@ -635,7 +644,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif query.data == 'cancel_add':
         if 'add_product' in context.user_data:
-            # Удаляем загруженные фото
             photos = context.user_data['add_product'].get('photos', [])
             for photo_path in photos:
                 if os.path.exists(photo_path):
@@ -683,12 +691,10 @@ async def edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return PRICE
     
     elif field_data['type'] == 'category':
-        # Категория обрабатывается через callback
         pass
     
     elif field_data['type'] == 'photos':
         if update.message.photo:
-            # Получаем фото
             if 'edit_photos' not in context.user_data:
                 context.user_data['edit_photos'] = []
             
@@ -702,10 +708,8 @@ async def edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['edit_photos'].append(file_path)
             
             if len(context.user_data['edit_photos']) >= 5:
-                # Завершаем обновление фото
                 update_product(field_data['id'], product[1], product[2], product[3], context.user_data['edit_photos'])
                 
-                # Отправляем превью
                 with open(context.user_data['edit_photos'][0], 'rb') as photo:
                     await update.message.reply_photo(
                         photo=photo,
@@ -749,17 +753,11 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         request = json.loads(data)
         
-        # Обработка запроса на получение списка товаров
         if request.get('action') == 'get_products':
-            products_list = get_products_for_webapp()
+            products_list = get_products_for_webapp_with_images()
+            compressed_data = compress_and_encode(products_list)
             
-            # Кодируем товары в JSON для передачи
-            products_json = json.dumps(products_list, ensure_ascii=False)
-            
-            # Для передачи через WebApp используем прямой способ - без URL параметров
-            # Просто открываем WebApp, а товары будем получать через Telegram Bot API
-            
-            # Отправляем сообщение с открытием магазина
+            # Отправляем обратно через ответное сообщение
             await update.message.reply_text(
                 f"🛍️ *Магазин KUDI SHOP*\n\n"
                 f"📦 Товаров в наличии: {len(products_list)}\n\n"
@@ -768,28 +766,12 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "🛍️ Открыть магазин",
-                        web_app={'url': WEBAPP_URL}
+                        web_app={'url': f"{WEBAPP_URL}?data={compressed_data}"}
                     )
                 ]])
             )
-            
-            # Для отладки отправляем список товаров отдельно
-            if products_list:
-                preview_text = "📋 *Товары в базе:*\n\n"
-                for i, p in enumerate(products_list[:10]):
-                    preview_text += f"{i+1}. {p['name']} - {p['price']} ₽\n"
-                if len(products_list) > 10:
-                    preview_text += f"\n*...и еще {len(products_list) - 10} товаров*"
-                
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=preview_text,
-                    parse_mode='Markdown'
-                )
-            
             return
         
-        # Обработка оформления заказа
         elif request.get('action') == 'order':
             order_text = "🛍️ *Новый заказ!*\n\n"
             order_text += f"👤 *Клиент:* @{user.username if user.username else 'неизвестно'}\n"
@@ -802,7 +784,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             order_text += f"\n💰 *Итого:* {request['total']} ₽"
             
-            # Сохраняем заказ в файл
             orders_file = 'orders.json'
             orders = []
             if os.path.exists(orders_file):
@@ -825,7 +806,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await update.message.reply_text(order_text, parse_mode='Markdown')
             
-            # Отправляем уведомление админу
             if ADMIN_ID:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
@@ -885,13 +865,10 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Ошибка: {context.error}")
 
 def main():
-    """Запуск бота"""
-    # Инициализируем базу данных
     init_db()
     
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Conversation handler для добавления товара
     add_product_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_callback, pattern='^add_product$')],
         states={
@@ -904,7 +881,6 @@ def main():
         per_message=False,
     )
     
-    # Conversation handler для редактирования
     edit_product_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(button_callback, pattern='^edit_name_'),
@@ -920,7 +896,6 @@ def main():
         per_message=False,
     )
     
-    # Conversation handler для категории при редактировании
     edit_category_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_callback, pattern='^edit_category_')],
         states={
