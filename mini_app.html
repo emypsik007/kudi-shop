@@ -440,7 +440,7 @@
             <button class="category-btn" data-category="accessories">🎒 Аксессуары</button>
         </div>
 
-        <div id="loadingContainer" class="loading-container" style="display: none;">
+        <div id="loadingContainer" class="loading-container" style="display: flex;">
             <div class="loader"></div>
             <p>Загрузка товаров...</p>
         </div>
@@ -536,47 +536,50 @@
         let favorites = JSON.parse(localStorage.getItem('kudi_favorites')) || [];
         let currentCategory = 'all';
         
-        // API URL (ваш сервер с api.py)
-        // Замените на реальный IP или домен вашего сервера
-        const API_URL = 'http://YOUR_SERVER_IP:5000/api/products';
-        
-        // Функция для загрузки товаров с API
-        async function loadProductsFromAPI() {
-            showLoading();
-            
+        // Функция для распаковки данных из URL
+        function decompressAndDecode(encodedData) {
             try {
-                console.log('Загрузка товаров с API:', API_URL);
-                const response = await fetch(API_URL);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Декодируем base64
+                const compressed = atob(encodedData.replace(/-/g, '+').replace(/_/g, '/'));
+                // Преобразуем строку в байты
+                const bytes = new Uint8Array(compressed.length);
+                for (let i = 0; i < compressed.length; i++) {
+                    bytes[i] = compressed.charCodeAt(i);
                 }
-                
-                const data = await response.json();
-                console.log('Получено товаров:', data.length);
-                
-                if (data && data.length > 0) {
-                    products = data;
-                    // Сохраняем в кэш
-                    localStorage.setItem('kudi_products_cache', JSON.stringify({
-                        data: products,
-                        timestamp: Date.now()
-                    }));
-                    hideLoading();
-                    applyFiltersAndRender();
-                    renderFavorites();
-                    renderCart();
-                    updateProfile();
-                    showNotification(`✅ Загружено ${products.length} товаров`);
-                } else {
-                    // Если API вернул пустой массив, пробуем загрузить из кэша
-                    loadFromCache();
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки товаров с API:', error);
-                // Пробуем загрузить из кэша
-                loadFromCache();
+                // Распаковываем
+                const decompressed = pako.inflate(bytes, { to: 'string' });
+                return JSON.parse(decompressed);
+            } catch(e) {
+                console.error('Ошибка распаковки:', e);
+                return null;
             }
+        }
+        
+        // Загрузка товаров из URL параметра
+        function loadProductsFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const encodedData = urlParams.get('data');
+            
+            if (encodedData) {
+                try {
+                    // Используем pako для распаковки
+                    if (typeof pako !== 'undefined') {
+                        const productsData = decompressAndDecode(encodedData);
+                        if (productsData && productsData.length > 0) {
+                            products = productsData;
+                            // Сохраняем в кэш
+                            localStorage.setItem('kudi_products_cache', JSON.stringify({
+                                data: products,
+                                timestamp: Date.now()
+                            }));
+                            return true;
+                        }
+                    }
+                } catch(e) {
+                    console.error('Ошибка загрузки товаров из URL:', e);
+                }
+            }
+            return false;
         }
         
         // Загрузка из кэша
@@ -587,41 +590,16 @@
                     const cache = JSON.parse(cached);
                     if (cache.data && cache.data.length > 0) {
                         products = cache.data;
-                        hideLoading();
-                        applyFiltersAndRender();
-                        renderFavorites();
-                        renderCart();
-                        updateProfile();
-                        showNotification(`📦 Загружено из кэша: ${products.length} товаров`);
                         return true;
                     }
-                } catch(e) {
-                    console.error('Ошибка чтения кэша:', e);
-                }
-            }
-            
-            // Если нет кэша и API не работает, показываем сообщение
-            hideLoading();
-            const productsGrid = document.getElementById('productsGrid');
-            if (productsGrid) {
-                productsGrid.innerHTML = `
-                    <div class="empty-state" style="grid-column: 1/-1;">
-                        <div class="empty-state-icon">⚠️</div>
-                        <p>Не удалось загрузить товары</p>
-                        <p style="font-size: 12px; margin-top: 10px;">Проверьте подключение к интернету</p>
-                        <button class="refresh-btn" onclick="forceRefresh()" style="margin-top: 20px;">🔄 Повторить</button>
-                    </div>
-                `;
+                } catch(e) {}
             }
             return false;
         }
         
-        // Принудительное обновление
-        function forceRefresh() {
-            // Очищаем кэш
-            localStorage.removeItem('kudi_products_cache');
-            // Загружаем заново
-            loadProductsFromAPI();
+        // Запрос товаров у бота (если не загрузились из URL)
+        function requestProductsFromBot() {
+            tg.sendData(JSON.stringify({ action: 'get_products' }));
         }
         
         function createStars() {
@@ -659,7 +637,6 @@
             setTimeout(() => notification.remove(), 2000);
         }
 
-        // Экранирование HTML
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
@@ -667,7 +644,6 @@
             return div.innerHTML;
         }
 
-        // Отрисовка товаров
         function renderProducts(productsToRender, containerId) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -882,11 +858,84 @@
             showNotification('✅ Заказ оформлен!');
         }
 
+        function forceRefresh() {
+            localStorage.removeItem('kudi_products_cache');
+            showLoading();
+            // Пытаемся загрузить из URL
+            if (!loadProductsFromURL()) {
+                // Если не получилось, запрашиваем у бота
+                requestProductsFromBot();
+            } else {
+                hideLoading();
+                applyFiltersAndRender();
+                renderFavorites();
+                renderCart();
+                updateProfile();
+                showNotification(`✅ Загружено ${products.length} товаров`);
+            }
+        }
+
+        // Подключаем pako библиотеку для распаковки
+        function loadPako() {
+            return new Promise((resolve) => {
+                if (typeof pako !== 'undefined') {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.0.4/pako.min.js';
+                script.onload = resolve;
+                document.head.appendChild(script);
+            });
+        }
+
         // Инициализация
-        function init() {
+        async function init() {
             createStars();
-            // Загружаем товары с API
-            loadProductsFromAPI();
+            await loadPako();
+            
+            // Пытаемся загрузить товары из URL
+            let loaded = loadProductsFromURL();
+            
+            if (!loaded) {
+                // Пробуем загрузить из кэша
+                loaded = loadFromCache();
+                if (loaded) {
+                    hideLoading();
+                    applyFiltersAndRender();
+                    renderFavorites();
+                    renderCart();
+                    updateProfile();
+                    showNotification(`📦 Загружено из кэша: ${products.length} товаров`);
+                } else {
+                    // Если ничего нет, запрашиваем у бота
+                    requestProductsFromBot();
+                    // Показываем сообщение о загрузке
+                    setTimeout(() => {
+                        if (products.length === 0) {
+                            hideLoading();
+                            const productsGrid = document.getElementById('productsGrid');
+                            if (productsGrid) {
+                                productsGrid.innerHTML = `
+                                    <div class="empty-state" style="grid-column: 1/-1;">
+                                        <div class="empty-state-icon">📦</div>
+                                        <p>Нет товаров</p>
+                                        <p style="font-size: 12px; margin-top: 10px;">Добавьте товары через админ-панель бота</p>
+                                        <button class="refresh-btn" onclick="forceRefresh()" style="margin-top: 20px;">🔄 Обновить</button>
+                                    </div>
+                                `;
+                            }
+                        }
+                    }, 3000);
+                }
+            } else {
+                hideLoading();
+                applyFiltersAndRender();
+                renderFavorites();
+                renderCart();
+                updateProfile();
+                showNotification(`✅ Загружено ${products.length} товаров`);
+            }
         }
 
         // Навигация
@@ -913,8 +962,11 @@
         // Запуск
         init();
         
-        // Делаем forceRefresh глобальной
         window.forceRefresh = forceRefresh;
+        window.addToCart = addToCart;
+        window.toggleFavorite = toggleFavorite;
+        window.updateQuantity = updateQuantity;
+        window.checkout = checkout;
     </script>
 </body>
 </html>
