@@ -163,28 +163,31 @@ def get_category_keyboard():
     keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data='cancel_add')])
     return InlineKeyboardMarkup(keyboard)
 
-# Получить список товаров для отправки в WebApp
+# Получить список товаров для отправки в WebApp (только URL фото, не base64)
 def get_products_for_webapp():
     products = get_all_products()
     products_list = []
     
+    # Получаем базовый URL для фото (если фото хранятся локально, нужно их хостить)
+    # Временно используем прямые пути - для GitHub Pages нужно загружать фото отдельно
     for product in products:
         photos = json.loads(product[4]) if product[4] else []
-        photos_data = []
-        
-        for photo_path in photos[:3]:  # Отправляем первые 3 фото
-            if os.path.exists(photo_path):
-                with open(photo_path, 'rb') as f:
-                    photo_base64 = base64.b64encode(f.read()).decode('utf-8')
-                    photos_data.append(f"data:image/jpeg;base64,{photo_base64}")
+        # Для локального тестирования - оставляем пути
+        # Для продакшена фото нужно загружать на хостинг
+        photos_urls = []
+        for photo_path in photos[:5]:
+            # Так как фото хранятся локально, а WebApp на GitHub, фото не будут отображаться
+            # Временно используем плейсхолдер
+            # В реальном проекте нужно загружать фото на Imgur или другой хостинг
+            photos_urls.append(photo_path)
         
         products_list.append({
             'id': product[0],
             'name': product[1],
             'price': product[2],
             'category': product[3],
-            'photos': photos_data,
-            'main_photo': photos_data[0] if photos_data else None
+            'photos': photos_urls,
+            'main_photo': photos_urls[0] if photos_urls else None
         })
     
     return products_list
@@ -288,7 +291,8 @@ async def add_product_photos(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Получаем самое большое фото
         photo_file = await update.message.photo[-1].get_file()
         timestamp = int(datetime.now().timestamp())
-        filename = f"{context.user_data['add_product']['name']}_{len(context.user_data['add_product']['photos'])+1}_{timestamp}.jpg"
+        product_name = context.user_data['add_product'].get('name', 'product')
+        filename = f"{product_name}_{len(context.user_data['add_product']['photos'])+1}_{timestamp}.jpg"
         # Очищаем имя файла от недопустимых символов
         filename = "".join(c for c in filename if c.isalnum() or c in '._-')
         file_path = f"product_photos/{filename}"
@@ -749,26 +753,27 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if request.get('action') == 'get_products':
             products_list = get_products_for_webapp()
             
-            # Кодируем товары в JSON для передачи через URL
-            products_json = json.dumps(products_list)
-            import urllib.parse
-            products_encoded = urllib.parse.quote(products_json)
+            # Кодируем товары в JSON для передачи
+            products_json = json.dumps(products_list, ensure_ascii=False)
             
-            # Отправляем сообщение с кнопкой, которая передаст товары через URL параметр
+            # Для передачи через WebApp используем прямой способ - без URL параметров
+            # Просто открываем WebApp, а товары будем получать через Telegram Bot API
+            
+            # Отправляем сообщение с открытием магазина
             await update.message.reply_text(
                 f"🛍️ *Магазин KUDI SHOP*\n\n"
                 f"📦 Товаров в наличии: {len(products_list)}\n\n"
-                f"Нажмите на кнопку ниже, чтобы открыть магазин с товарами:",
+                f"Нажмите на кнопку ниже, чтобы открыть магазин:",
                 parse_mode='Markdown',
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
                         "🛍️ Открыть магазин",
-                        web_app={'url': f"{WEBAPP_URL}?products={products_encoded}"}
+                        web_app={'url': WEBAPP_URL}
                     )
                 ]])
             )
             
-            # Также отправляем простое сообщение для отладки
+            # Для отладки отправляем список товаров отдельно
             if products_list:
                 preview_text = "📋 *Товары в базе:*\n\n"
                 for i, p in enumerate(products_list[:10]):
