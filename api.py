@@ -5,23 +5,18 @@ import json
 import os
 
 app = Flask(__name__)
-CORS(app)  # Разрешаем запросы с GitHub Pages
+CORS(app)
 
-# URL для доступа к фото (нужно настроить ваш сервер для раздачи статики)
-# Если бот и API на одном сервере, можно использовать относительные пути
-# Для продакшена лучше загружать фото на Imgur или другой хостинг
-PHOTO_BASE_URL = "https://emypsik007.github.io/kudi-shop/product_photos/"  # Замените на ваш URL
+PHOTO_BASE_URL = "https://emypsik007.github.io/kudi-shop/product_photos/"
+
 
 def get_products():
-    """Получение всех товаров из базы данных"""
     conn = sqlite3.connect('products.db')
     cursor = conn.cursor()
     try:
-        # Проверяем существование таблицы и колонок
         cursor.execute("PRAGMA table_info(products)")
         columns = [col[1] for col in cursor.fetchall()]
-        
-        # Если есть колонка image_url, используем её, иначе photos
+
         if 'image_url' in columns:
             cursor.execute('SELECT id, name, price, category, image_url FROM products ORDER BY id DESC')
             products = cursor.fetchall()
@@ -35,28 +30,26 @@ def get_products():
                 'main_photo': p[4]
             } for p in products if p[1] is not None]
         else:
-            # Используем поле photos (JSON массив)
             cursor.execute('SELECT id, name, price, category, photos FROM products ORDER BY id DESC')
             products = cursor.fetchall()
             conn.close()
-            
+
             result = []
             for p in products:
-                if p[1] is None:  # Пропускаем товары без названия
+                if p[1] is None:
                     continue
                 photos = []
                 if p[4]:
                     try:
                         photos_list = json.loads(p[4])
-                        # Преобразуем локальные пути в URL
                         for photo in photos_list:
                             if photo.startswith('product_photos/'):
                                 photos.append(PHOTO_BASE_URL + os.path.basename(photo))
                             else:
                                 photos.append(photo)
-                    except:
+                    except Exception:
                         pass
-                
+
                 result.append({
                     'id': p[0],
                     'name': p[1],
@@ -71,13 +64,16 @@ def get_products():
         conn.close()
         return []
 
+
 @app.route('/api/products')
 def products():
     return jsonify(get_products())
 
+
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'ok'})
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
